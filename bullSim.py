@@ -19,6 +19,8 @@ default_sigma = 0.8/np.sqrt(365) # Specify vol per period
 T = 365
 # Uni Fee Yield
 uniFeeYield = 0.0002580686267
+minCR = 1.75
+maxCR = 3
 
 # %%
 
@@ -58,8 +60,8 @@ def iterateGbmTest(iterations=100000):
 iterateGbmTest()
 
 # Bull Lite Params
-l = 0.2 # % to LP
-m = 3 # oSQTH LP to mint ratio
+l = 0.3 # % to LP
+m = 1 # oSQTH LP to mint ratio
 
 # %% Simulator
 def simBullLite(sigma):
@@ -99,7 +101,52 @@ def simBullLiteSigmas(sigmas):
         filepath.parent.mkdir(parents=True, exist_ok=True)
         result.to_csv(filepath) 
 
-# %%
-simBullLiteSigmas([sigma/np.sqrt(365) for sigma in np.arange(0.4, 1.3, 0.1)])
+def getDelta(l, m):
+    return ((1-l)/l + 3 +m- 2*(1+m))/((1-l)/l+1)
 
+def getCR(l, m, vol, ethDeposited=100):
+    ethPrice = 2000
+    normFactor = 0.5
+    ethInVault = (1-l)*ethDeposited
+    ethInLP = l*ethDeposited
+    squeethPrice = ethPrice*normFactor*np.exp(vol**2 *17.5/365)/10000
+    liquidity = ethInLP/np.sqrt(squeethPrice)
+    oSQTHInLP = liquidity/np.sqrt(squeethPrice)
+    oSQTHToSell = m*oSQTHInLP
+    proceedsInETH = oSQTHToSell*squeethPrice
+
+    return (ethInVault+ethInLP+proceedsInETH+oSQTHInLP*ethPrice*normFactor/10000)/((oSQTHInLP+oSQTHToSell)*ethPrice*normFactor/10000)
+
+def simBullLiteSigmasAverage(count, sigmas):
+    bullReturnSum = {}
+    bullReturnAvg = {}
+    for sigma in sigmas:
+        bullReturnSum[sigma] = 0
+        for i in range(count):
+            bullReturnSum[sigma] += simBullLite(sigma)['bullCumulativeReturn'][T]
+        bullReturnAvg[sigma] = bullReturnSum[sigma]/count
+    return bullReturnAvg
+
+def generateLM():
+    lm = pd.DataFrame()
+    lm['l'] = np.nan
+    lm['m'] = np.nan
+    lm['delta'] = np.nan
+    lm['CR'] = np.nan
+    for l in np.arange(0.1, 1.1, 0.1):
+        for m in np.arange(1, 11, 1):
+            delta = getDelta(l, m)
+            cr = getCR(l, m, 0.8)
+            if cr >= minCR and cr <= maxCR and delta >= 0.2 and delta <= 1:
+                row = {'l': l, 'm': m, 'delta': delta, 'CR': cr}
+                lm = lm.append(row, ignore_index = True)
+    filepath = Path('/Users/daryakaviani/bullSim/lm.csv') 
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    lm.to_csv(filepath) 
+
+# %%
+# simBullLiteSigmas([sigma/np.sqrt(365) for sigma in np.arange(0.4, 1.3, 0.1)])
+# print(getDelta(.2, 3))
+# print(getCR(0.2, 3, 0.8))
+print(simBullLiteSigmasAverage(1000, [sigma/np.sqrt(365) for sigma in np.arange(0.4, 1.3, 0.1)]))
 # %%
