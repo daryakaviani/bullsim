@@ -60,38 +60,22 @@ def iterateGbmTest(iterations=100000):
 iterateGbmTest()
 
 # Bull Lite Params
-l = 0.3 # % to LP
-m = 1 # oSQTH LP to mint ratio
+lmDictionary = [(0.7,1), (0.6,1), (0.5,1), (0.618034,0.689808), (0.4,1), (0.3,1), (0.618034,0.48541)]
 
 # %% Simulator
-def simBullLite(sigma):
+def simBullLite(sigma, l, m):
     #sigma = 0 # zero vol checks
     S = liteGBM(S0=S0,mu=mu,sigma=sigma,T=T)
     f = sigma**2 # Funding
-
-    z = pd.DataFrame({'S':S})
-    # Empty cols
-    z['ethReturn'] = np.nan
-    z['bullReturn'] = np.nan
-    z['bullCumulativeReturn'] = np.nan
 
     # l: % to LP: 0.2
     # m: oSQTH LP to mint ratio: 3
     # r: ETH return -> ln(S1) - ln(S0) -> what continuously compounded rate would get me from 100 to 105
     # f: funding -> sigma^2
 
-    for i, row in z.iterrows():
-        if i == 0:
-            z['ethReturn'][i] = 0
-        else:
-            z['ethReturn'][i] = np.log(z['S'][i]) - np.log(z['S'][i - 1])
-        r = z['ethReturn'][i]
-        z['bullReturn'][i] = (1+r)*((1-l)/l + 2*np.sqrt(1+r)*np.sqrt(1-f)+m -(1+m)*(1+r)*(1-f))/((1-l)/l+1) - 1 + uniFeeYield
-        if i == 0:
-            z['bullCumulativeReturn'][i] = z['bullReturn'][i]
-        else:
-            z['bullCumulativeReturn'][i] = z['bullReturn'][i] + z['bullCumulativeReturn'][i - 1]
-    return z
+    r = S[1:]/S[0:-1] - 1
+    returns = (1+r)*((1-l)/l + 2*np.sqrt(1+r)*np.sqrt(1-f)+m -(1+m)*(1+r)*(1-f))/((1-l)/l+1) - 1 + uniFeeYield
+    return returns
 
 # %%
 def simBullLiteSigmas(sigmas):
@@ -117,15 +101,31 @@ def getCR(l, m, vol, ethDeposited=100):
 
     return (ethInVault+ethInLP+proceedsInETH+oSQTHInLP*ethPrice*normFactor/10000)/((oSQTHInLP+oSQTHToSell)*ethPrice*normFactor/10000)
 
+# l = ethInVault/ethInLP
+# m = oSQTHToSell/oSQTHInLP
+
 def simBullLiteSigmasAverage(count, sigmas):
-    bullReturnSum = {}
-    bullReturnAvg = {}
-    for sigma in sigmas:
-        bullReturnSum[sigma] = 0
-        for i in range(count):
-            bullReturnSum[sigma] += simBullLite(sigma)['bullCumulativeReturn'][T]
-        bullReturnAvg[sigma] = bullReturnSum[sigma]/count
-    return bullReturnAvg
+    lm = generateLM()
+    results = pd.DataFrame({'sigma':np.arange(0.4, 1.3, 0.1)})
+    for i, row in lm.iterrows():
+        results[(row['l'], row['m'])] = np.nan
+
+    for i, row in results.iterrows():
+        sigma = results['sigma'][i]
+
+        for (colname, _) in results.iteritems():
+            if colname != 'sigma':
+                print("colname", colname)
+                l, m = colname
+                bullReturnSum = 0
+                for i in range(count):
+                    bullReturnSum += sum(simBullLite(sigma/np.sqrt(T), l, m))
+                row[(l, m)] = bullReturnSum/count
+                print(sigma, bullReturnSum/count)
+
+    filepath = Path('/Users/daryakaviani/bullSim/results.csv') 
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    results.to_csv(filepath) 
 
 def generateLM():
     lm = pd.DataFrame()
@@ -133,8 +133,8 @@ def generateLM():
     lm['m'] = np.nan
     lm['delta'] = np.nan
     lm['CR'] = np.nan
-    for l in np.arange(0.1, 1.1, 0.1):
-        for m in np.arange(1, 11, 1):
+    for l in np.arange(0.01, 1.1, 0.01):
+        for m in np.arange(1, 11, .05):
             delta = getDelta(l, m)
             cr = getCR(l, m, 0.8)
             if cr >= minCR and cr <= maxCR and delta >= 0.2 and delta <= 1:
@@ -143,10 +143,13 @@ def generateLM():
     filepath = Path('/Users/daryakaviani/bullSim/lm.csv') 
     filepath.parent.mkdir(parents=True, exist_ok=True)
     lm.to_csv(filepath) 
+    return lm
 
 # %%
 # simBullLiteSigmas([sigma/np.sqrt(365) for sigma in np.arange(0.4, 1.3, 0.1)])
-# print(getDelta(.2, 3))
-# print(getCR(0.2, 3, 0.8))
+# print(getDelta(.618034, .48541))
+# print(getCR(.618034, .689808, .8))
+# print(getDelta(.618034, .689808))
 print(simBullLiteSigmasAverage(1000, [sigma/np.sqrt(365) for sigma in np.arange(0.4, 1.3, 0.1)]))
 # %%
+# generateLM()
