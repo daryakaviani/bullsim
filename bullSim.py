@@ -115,17 +115,41 @@ def simBullLiteSigmasAverage(count, sigmas):
 
         for (colname, _) in results.iteritems():
             if colname != 'sigma':
-                print("colname", colname)
                 l, m = colname
+                print(colname)
                 bullReturnSum = 0
                 for i in range(count):
                     bullReturnSum += sum(simBullLite(sigma/np.sqrt(T), l, m))
                 row[(l, m)] = bullReturnSum/count
-                print(sigma, bullReturnSum/count)
+    historical_sigma = 0.8979
+    slopes, y_intercepts, ls, ms, deltas, historical = [], [], [], [], [], []
+    for (colname, values) in results.iteritems():
+        if colname != 'sigma':
+            l, m = colname
+            a, b = np.polyfit(results['sigma'], values, 1)
+            slopes.append(a)
+            y_intercepts.append(b)
+            ls.append(l)
+            ms.append(m)
+            deltas.append(getDelta(l, m))
+            historical.append((a*historical_sigma) + b)
+    x_intercepts = -1*np.divide(y_intercepts,slopes)
+    trendlines = pd.DataFrame({'slopes':slopes,
+                               'y_intercepts':y_intercepts,
+                               'x_intercepts':x_intercepts,
+                                'l': ls,
+                                'm': ms,
+                                'delta': deltas,
+                                'historical': historical
+                              })
 
     filepath = Path('/Users/daryakaviani/bullSim/results.csv') 
     filepath.parent.mkdir(parents=True, exist_ok=True)
     results.to_csv(filepath) 
+
+    filepath = Path('/Users/daryakaviani/bullSim/trendline.csv') 
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    trendlines.to_csv(filepath) 
 
 def generateLM():
     lm = pd.DataFrame()
@@ -137,7 +161,7 @@ def generateLM():
         for m in np.arange(1, 11, .05):
             delta = getDelta(l, m)
             cr = getCR(l, m, 0.8)
-            if cr >= minCR and cr <= maxCR and delta >= 0.2 and delta <= 1:
+            if cr >= minCR and cr <= maxCR and delta >= 0.55 and delta <= 1:
                 row = {'l': l, 'm': m, 'delta': delta, 'CR': cr}
                 lm = lm.append(row, ignore_index = True)
     filepath = Path('/Users/daryakaviani/bullSim/lm.csv') 
@@ -150,6 +174,6 @@ def generateLM():
 # print(getDelta(.618034, .48541))
 # print(getCR(.618034, .689808, .8))
 # print(getDelta(.618034, .689808))
-print(simBullLiteSigmasAverage(1000, [sigma/np.sqrt(365) for sigma in np.arange(0.4, 1.3, 0.1)]))
+print(simBullLiteSigmasAverage(10000, [sigma/np.sqrt(365) for sigma in np.arange(0.4, 1.3, 0.1)]))
 # %%
 # generateLM()
